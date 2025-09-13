@@ -1,25 +1,12 @@
 import User from "../models/users.js";
 import bcrypt from "bcryptjs";
-
-// let User = [
-//   {
-//     _id: "12345",
-//     username: "john_doe",
-//     email: "john@example.com",
-//     password: "password123",
-//   },
-//   {
-//     _id: "67890",
-//     username: "jane_doe",
-//     email: "jane@example.com",
-//     password: "password456",
-//   },
-// ];
+import jwt from "jsonwebtoken";
 
 export const register = async (req, res) => {
   // Register new user
   try {
     const user = req.body;
+    console.log(user.email, user.password, user.username);
 
     // Check if user already exists
     const userExists = await User.findOne({ email: user.email });
@@ -29,47 +16,52 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(
       user.password + process.env.PEPPER,
-      10
+      parseInt(process.env.SALT_ROUNDS, 10) || 10
     );
-   
-    // Create new user (store plain password for learning only)
-    const newUser = new User({
-      ...user,
-      password: hashedPassword,
-      bio : "This is my bio",
-    });
-    await newUser.save();
 
-    // const user = await newUser.save();
+    const newUser = new User({
+      username: user.name,
+      email: user.email,
+      password: hashedPassword,
+      bio: "This is my bio",
+    });
+    
+
     res.status(201).json({
-      message: "User created successfully"
+      action: "register",
+      message: "User created successfully",
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-export const login = (req, res) => {
+export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     // Check if user exists
-    const user = User.find((user) => user.email === email);
+    const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ message: "User not found" });
     }
 
     // Check password (plain comparison)
-    if (user.password !== password) {
+    if (
+      bcrypt.compareSync(password + process.env.PEPPER, user.password) === false
+    ) {
       return res.status(400).json({ message: "Invalid password" });
     }
 
-    res.status(200).json({
-      message: "Logged in successfully",
-      userId: user._id,
+    const encodedToken = jwt.sign( { id: user._id, email: user.email, username: user.username }, process.env.JWT_SECRET, {
+      expiresIn: "10h",
     });
 
-    res.send("Login endpoint - to be implemented");
+    res.status(200).json({
+      action: "login",
+      message: "Logged in successfully",
+      encodedToken: encodedToken,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

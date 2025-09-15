@@ -26,7 +26,7 @@ export const register = async (req, res) => {
       bio: "This is my bio",
     });
     
-
+await newUser.save();
     res.status(201).json({
       action: "register",
       message: "User created successfully",
@@ -53,7 +53,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid password" });
     }
 
-    const encodedToken = jwt.sign( { id: user._id, email: user.email, username: user.username }, process.env.JWT_SECRET, {
+    const encodedToken = jwt.sign( { id: user._id, email: user.email, username: user.username, profilePicture: user.profilePicture   }, process.env.JWT_SECRET, {
       expiresIn: "10h",
     });
 

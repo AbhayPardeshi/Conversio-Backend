@@ -23,7 +23,7 @@ const __dirname = dirname(__filename);
 app.use(
   cors({
     origin: "http://localhost:3000", // your React app
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   })
 );

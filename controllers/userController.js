@@ -1,8 +1,46 @@
 import User from "../models/users.js";
 import jwt from "jsonwebtoken";
 
-export const getUser = (req, res) => {
-  res.send("Get user profile");
+export const getUser = async (req, res) => {
+  try {
+    const userID = req.params.id;
+
+    // Find user and exclude sensitive fields
+    const user = await User.findById(userID).select("-password -__v").lean();
+
+    if (!user) {
+      return res.status(404).json({
+        action: "setUser",
+        status: "error",
+        message: "User not found",
+      });
+    }
+
+    // Create safe user object with only necessary fields
+    const safeUser = {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      bio: user.bio,
+      profilePicture: user.profilePicture,
+      followers: user.followers,
+      following: user.following,
+      bookmarkedPosts: user.bookmarkedPosts,
+    };
+
+    res.status(200).json({
+      action: "setUser",
+      status: "success",
+      user: safeUser,
+    });
+  } catch (error) {
+    console.error("Error in getUser:", error);
+    res.status(500).json({
+      action: "getUser",
+      status: "error",
+      message: "Failed to fetch user",
+    });
+  }
 };
 
 export const updateUser = async (req, res) => {
@@ -13,12 +51,12 @@ export const updateUser = async (req, res) => {
   }
 
   const updateData = {};
-  if (req.body.name) updateData.username = req.body.name;
+  if (req.body.username) updateData.username = req.body.username;
   if (req.body.bio) updateData.bio = req.body.bio;
   if (req.file) {
-    updateData.profilePicture = `${req.protocol}://${req.get(
-      "host"
-    )}/uploads/${req.file.filename}`;
+    updateData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
+      req.file.filename
+    }`;
   }
 
   // Update user in DB
@@ -28,6 +66,8 @@ export const updateUser = async (req, res) => {
     { new: true } // return updated document
   );
 
+  console.log(updateUser.username);
+  
   const encodedToken = jwt.sign(
     {
       id: updatedUser._id,
@@ -41,9 +81,8 @@ export const updateUser = async (req, res) => {
       expiresIn: "10h",
     }
   );
- 
-  
-res.status(200).json({
+
+  res.status(200).json({
     action: "userUpdated",
     user: updatedUser,
     encodedToken: encodedToken,
@@ -53,6 +92,8 @@ res.status(200).json({
 export const deleteUser = (req, res) => {
   res.send("Delete user profile");
 };
+
+
 
 export const followUser = (req, res) => {
   res.send("Follow a user");

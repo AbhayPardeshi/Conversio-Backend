@@ -6,7 +6,6 @@ export const register = async (req, res) => {
   // Register new user
   try {
     const user = req.body;
-    console.log(user.email, user.password, user.username);
 
     // Check if user already exists
     const userExists = await User.findOne({ email: user.email });

@@ -50,7 +50,7 @@ export const updateUser = async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
 
-  const updateData = {};
+  const updateData = {};                                     
   if (req.body.username) updateData.username = req.body.username;
   if (req.body.bio) updateData.bio = req.body.bio;
   if (req.file) {
@@ -66,8 +66,6 @@ export const updateUser = async (req, res) => {
     { new: true } // return updated document
   );
 
-  console.log(updateUser.username);
-  
   const encodedToken = jwt.sign(
     {
       id: updatedUser._id,

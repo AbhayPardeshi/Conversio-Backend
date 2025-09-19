@@ -79,14 +79,20 @@ const likePost = async (req, res) => {
     // Check if the user has already liked the post
     if (post.likes.includes(req.body.userId)) {
       // If yes, remove the like
+      console.log("here 1");
+      
       post.likes.pull(req.body.userId);
     } else {
+      console.log("here 2");
       // If no, add the like
       post.likes.push(req.body.userId);
     }
 
+    
+    
     const updatedPost = await post.save();
     await updatedPost.populate("user", "username email profilePicture");
+console.log(updatedPost);
     res.status(200).json({
       action: "postLiked",
       posts: updatedPost,

@@ -9,13 +9,17 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import upload from "./middlewares/upload.js";
+import http from "http";
+import { initChatSockets } from "./sockets/chat.js";
 import bookmarkRoutes from "./routes/bookmarkRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js";
 
 dotenv.config();
 connectDB();
 
 const app = express();
 const port = process.env.PORT;
+const server = http.createServer(app);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,11 +42,15 @@ app.use(urlencoded({ extended: true }));
 app.use("/api/auth", authRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/users", userRoutes);
-app.use("/api/bookmark", bookmarkRoutes)
+app.use("/api/bookmark", bookmarkRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+// Initialize Socket.IO
+initChatSockets(server, { corsOrigin: "http://localhost:3000" });
+
+server.listen(port, () => {
+  console.log(`HTTP and Socket.IO server listening on port ${port}`);
 });
 
 export default app;

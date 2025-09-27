@@ -50,7 +50,7 @@ export const updateUser = async (req, res) => {
     return res.status(404).json({ message: "User not found" });
   }
 
-  const updateData = {};                                     
+  const updateData = {};
   if (req.body.username) updateData.username = req.body.username;
   if (req.body.bio) updateData.bio = req.body.bio;
   if (req.file) {
@@ -87,11 +87,34 @@ export const updateUser = async (req, res) => {
   });
 };
 
+export const searchUsers = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    if (!query || query.trim() === "") {
+      return res.status(400).json({ message: "Query cannot be empty" });
+    }
+
+    const userList = await User.find(
+      { username: { $regex: query.trim(), $options: "i" } },
+      "username profilePicture _id"
+    )
+      .limit(10)
+      .sort({ username: 1 });
+
+    return res.status(200).json({
+      action: "searchedUsers",
+      userList,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
 export const deleteUser = (req, res) => {
   res.send("Delete user profile");
 };
-
-
 
 export const followUser = (req, res) => {
   res.send("Follow a user");

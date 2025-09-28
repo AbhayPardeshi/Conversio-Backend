@@ -27,7 +27,7 @@ const __dirname = dirname(__filename);
 // CORS configuration
 app.use(
   cors({
-    origin: "http://localhost:3000", // your React app
+    origin: ["http://localhost:3000", "http://localhost:3002"], // your React app
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
   })
@@ -47,7 +47,9 @@ app.use("/api/chat", chatRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Initialize Socket.IO
-initChatSockets(server, { corsOrigin: "http://localhost:3000" });
+initChatSockets(server, {
+  corsOrigin: ["http://localhost:3000", "http://localhost:3002"],
+});
 
 server.listen(port, () => {
   console.log(`HTTP and Socket.IO server listening on port ${port}`);

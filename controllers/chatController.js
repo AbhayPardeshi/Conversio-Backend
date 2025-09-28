@@ -1,4 +1,5 @@
 import Conversation from "../models/conversation.js";
+import message from "../models/message.js";
 import Message from "../models/message.js";
 import mongoose from "mongoose";
 
@@ -67,4 +68,24 @@ export const sendMessage = async (req, res) => {
   } catch (err) {
     return res.status(500).json({ message: err.message });
   }
+};
+
+export const getMessagedUsers = async (req, res) => {
+  console.log(req.query);
+  const currentUserId = req.query.userId;
+
+  if (!currentUserId) {
+    return res.status(400).json({ message: "user id is required" });
+  }
+
+  const conversationUsers = await Conversation.find({
+    participants: currentUserId,
+    $expr: { $eq: [{ $size: "$participants" }, 2] }, // only 2 participants (DMs)
+  }).populate("participants", "username profilePicture");
+
+  const users = conversationUsers.map((conv) =>
+    conv.participants.find((u) => u._id.toString() !== currentUserId.toString())
+  );
+
+  return res.status(200).json({ users: users });
 };

@@ -10,7 +10,7 @@ import mongoose from "mongoose";
  */
 export function initChatSockets(
   httpServer,
-  { corsOrigin = "http://localhost:3000" } = {}
+  { corsOrigin = ["http://localhost:3000", "http://localhost:3002"] } = {}
 ) {
   const io = new Server(httpServer, {
     cors: {
@@ -26,7 +26,6 @@ export function initChatSockets(
       return `dm:${x}:${y}`;
     };
 
-  
     socket.on("joinRoom", ({ roomId }) => {
       if (!roomId) return;
       socket.join(roomId);
@@ -73,7 +72,11 @@ export function initChatSockets(
     // Send a DM (room inferred by user ids)
     socket.on("sendDm", async ({ selfUserId, otherUserId, message }) => {
       try {
+        console.log("still here");
+
         if (!selfUserId || !otherUserId || !message?.text) return;
+        console.log("here");
+
         const [a, b] = [String(selfUserId), String(otherUserId)].sort();
         // upsert conversation for the two participants
         let convo = await Conversation.findOne({

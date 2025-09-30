@@ -39,6 +39,8 @@ const feedPosts = async (req, res) => {
 const createPost = async (req, res) => {
   try {
     const user = await User.findById(req.body.userId);
+    console.log(req.body);
+    
     if (!user) return res.status(404).json({ error: "User not found" });
 
     const newPost = new Post({
@@ -46,6 +48,7 @@ const createPost = async (req, res) => {
       text: req.body.text,
       media: req.file ? [`/uploads/${req.file.filename}`] : [],
       likes: [],
+      parentPost: req.body.parentPostId || null,
     });
 
     const savedPost = await newPost.save();
@@ -109,4 +112,52 @@ const deletePost = (req, res) => {
   res.send("Delete a specific post");
 };
 
-export { feedPosts, createPost, getPost, likePost, deletePost };
+
+
+export const createComment = async (req, res) => {
+  const { postId } = req.params;
+  const { userId, text } = req.body;
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    const parentPost = await Post.findById(postId);
+    if (!parentPost) return res.status(404).json({ error: "Post not found" });
+
+    const comment = await Post.create({
+      user: user._id,
+      text,
+      parentPost: parentPost._id,
+      media: req.file ? [`/uploads/${req.file.filename}`] : [],
+      likes: [],
+    });
+
+    const populatedComment = await comment.populate(
+      "user",
+      "username profilePicture"
+    );
+
+    res.status(201).json({
+      action: "commentAdded",
+      comment: populatedComment,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create comment" });
+  }
+};
+
+const fetchComments = (req, res) => {
+  res.send("Fetch comments for a specific post");
+};
+
+export {
+  feedPosts,
+  createPost,
+  getPost,
+  likePost,
+  deletePost,
+  createComment,
+  fetchComments,
+};

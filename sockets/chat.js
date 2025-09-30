@@ -40,61 +40,38 @@ export function initChatSockets(
       socket.emit("joinedRoom", { roomId });
     });
 
-    // Send a message to a room (roomId is conversationId)
-    socket.on("sendMessage", async ({ roomId, message }) => {
-      try {
-        if (!roomId || !message?.senderId || !message?.text) return;
-        // validate conversation id
-        if (!mongoose.isValidObjectId(roomId)) return;
-        const saved = await Message.create({
-          conversation: roomId,
-          sender: message.senderId,
-          text: message.text,
-        });
-        await Conversation.findByIdAndUpdate(roomId, {
-          lastMessage: message.text,
-          updatedAt: new Date(),
-        });
-        const payload = {
-          _id: saved._id,
-          roomId,
-          senderId: String(saved.sender),
-          text: saved.text,
-          createdAt: saved.createdAt,
-        };
-        socket.to(roomId).emit("newMessage", payload);
-        socket.emit("newMessage", payload);
-      } catch (_) {
-        // optional: emit error event
-      }
-    });
-
     // Send a DM (room inferred by user ids)
     socket.on("sendDm", async ({ selfUserId, otherUserId, message }) => {
       try {
-        console.log("still here");
-
         if (!selfUserId || !otherUserId || !message?.text) return;
-        console.log("here");
 
         const [a, b] = [String(selfUserId), String(otherUserId)].sort();
-        // upsert conversation for the two participants
+
+        // Upsert conversation for the two participants
         let convo = await Conversation.findOne({
           participants: { $all: [a, b], $size: 2 },
         });
         if (!convo) {
           convo = await Conversation.create({ participants: [a, b] });
         }
+
+        // Save message in DB
         const saved = await Message.create({
           conversation: convo._id,
           sender: selfUserId,
           text: message.text,
         });
+
+        // Update lastMessage
         await Conversation.findByIdAndUpdate(convo._id, {
           lastMessage: message.text,
           updatedAt: new Date(),
         });
+
+        // Compute dynamic DM roomId
         const roomId = makeDmRoomId(selfUserId, otherUserId);
+
+        // Broadcast to room
         const payload = {
           _id: saved._id,
           roomId,
@@ -106,7 +83,7 @@ export function initChatSockets(
         socket.to(roomId).emit("newMessage", payload);
         socket.emit("newMessage", payload);
       } catch (_) {
-        // optional: emit error event
+        // Optional: emit error event
       }
     });
 

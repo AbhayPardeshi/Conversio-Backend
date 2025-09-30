@@ -81,11 +81,24 @@ export const getMessagedUsers = async (req, res) => {
   const conversationUsers = await Conversation.find({
     participants: currentUserId,
     $expr: { $eq: [{ $size: "$participants" }, 2] }, // only 2 participants (DMs)
-  }).populate("participants", "username profilePicture");
+  })
+    .populate("participants", "username profilePicture")
+    .select("participants lastMessage");
 
-  const users = conversationUsers.map((conv) =>
-    conv.participants.find((u) => u._id.toString() !== currentUserId.toString())
-  );
+ 
 
-  return res.status(200).json({ users: users });
+  const usersWithLastMessage = conversationUsers.map((conv) => {
+    const otherUser = conv.participants.find(
+      (u) => u._id.toString() !== currentUserId.toString()
+    );
+
+    return {
+      ...otherUser.toObject(), // convert mongoose doc to plain object
+      lastMessage: conv.lastMessage, // add lastMessage
+    };
+  });
+
+
+
+  return res.status(200).json({ users: usersWithLastMessage });
 };

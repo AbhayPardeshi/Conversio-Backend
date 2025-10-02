@@ -10,8 +10,6 @@ const bookmarkPost = async (req, res) => {
     const post = await Post.findById(req.body.postId);
     if (!post) return res.status(404).json({ error: "Post not found" });
 
-    console.log("user" + user, "post" + post);
-
     // Check if the post is already bookmarked
     if (user.bookmarkedPosts.includes(post._id)) {
       // If yes, remove the bookmark
@@ -28,7 +26,6 @@ const bookmarkPost = async (req, res) => {
       postId: post._id,
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Failed to bookmark post" });
   }
 };
@@ -53,6 +50,5 @@ const getUserBookmarks = async (req, res) => {
     res.status(500).json({ error: "Failed to fetch bookmarks" });
   }
 };
-
 
 export { bookmarkPost, getUserBookmarks };

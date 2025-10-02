@@ -10,7 +10,7 @@ const feedPosts = async (req, res) => {
     // Count total posts for pagination info
     const totalPosts = await Post.countDocuments();
 
-    const posts = await Post.find()
+    const posts = await Post.find({ parentPost: null })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -40,7 +40,7 @@ const createPost = async (req, res) => {
   try {
     const user = await User.findById(req.body.userId);
     console.log(req.body);
-    
+
     if (!user) return res.status(404).json({ error: "User not found" });
 
     const newPost = new Post({
@@ -64,14 +64,28 @@ const createPost = async (req, res) => {
       savedPost: populatedPost,
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Failed to create post" });
   }
 };
 
+const getPost = async (req, res) => {
+  console.log(req.params);
 
-const getPost = (req, res) => {
-  res.send("Get a specific post");
+  try {
+    const post = await Post.findById(req.params.id).populate(
+      "user",
+      "username email profilePicture"
+    );
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    res.status(200).json({
+      action: "getPost",
+      post,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to get post" });
+  }
 };
 
 const likePost = async (req, res) => {
@@ -82,39 +96,32 @@ const likePost = async (req, res) => {
     // Check if the user has already liked the post
     if (post.likes.includes(req.body.userId)) {
       // If yes, remove the like
-      console.log("here 1");
-      
+
       post.likes.pull(req.body.userId);
     } else {
-      console.log("here 2");
       // If no, add the like
       post.likes.push(req.body.userId);
     }
 
-    
-    
     const updatedPost = await post.save();
     await updatedPost.populate("user", "username email profilePicture");
-console.log(updatedPost);
+
     res.status(200).json({
       action: "postLiked",
       posts: updatedPost,
     });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: "Failed to like post" });
   }
 };
-
-
 
 const deletePost = (req, res) => {
   res.send("Delete a specific post");
 };
 
+const createComment = async (req, res) => {
+  console.log("comment api hit");
 
-
-export const createComment = async (req, res) => {
   const { postId } = req.params;
   const { userId, text } = req.body;
 
@@ -148,8 +155,22 @@ export const createComment = async (req, res) => {
   }
 };
 
-const fetchComments = (req, res) => {
-  res.send("Fetch comments for a specific post");
+const fetchComments = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    const comments = await Post.find({ parentPost: postId })
+      .sort({ createdAt: -1 }) // newest first
+      .populate("user", "username email profilePicture");
+
+      console.log(comments);
+    res.status(201).json({
+      action: "allPostComments",
+      comments: comments,
+    });
+  } catch (error) {
+    res.status(500).json(error.message);
+  }
 };
 
 export {

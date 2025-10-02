@@ -15,7 +15,7 @@ router.get("/", feedPosts);
 router.post("/", upload.single("file"), createPost);
 router.get("/:id", getPost);
 router.post("/:id/like", likePost);
-router.post("/:postId/comments", createComment);
+router.post("/:postId/comments", upload.single("file"), createComment);
 router.get("/:postId/comments", fetchComments);
 
 router.delete("/:id", deletePost);

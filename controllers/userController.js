@@ -126,7 +126,7 @@ export const followUser = async (req, res) => {
 
     const userId = req.params.id;
     const currentUserId = req.user.id;
-   //const currentUserId = req.headers["x-user-id"];
+    //const currentUserId = req.headers["x-user-id"];
 
     if (userId === currentUserId) {
       throw new Error("SELF_FOLLOW");
@@ -199,10 +199,42 @@ export const unfollowUser = (req, res) => {
   res.send("Unfollow a user");
 };
 
-export const getFollowers = (req, res) => {
-  res.send("Get followers of a user");
+export const getFollowing = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const follows = await Follows.find({ followerId: userId })
+      .select("followingId")
+      .limit(20);
+
+    const followingIds = follows.map((f) => f.followingId);
+
+    const users = await User.find({ _id: { $in: followingIds } }).select(
+      "username avatar followersCount",
+    );
+
+    res.status(200).json(users);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
 };
 
-export const getFollowing = (req, res) => {
-  res.send("Get following of a user");
+export const getFollowers = async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const follows = await Follows.find({ followingId: userId })
+      .select("followerId")
+      .limit(20);
+
+    const followerIds = follows.map((f) => f.followerId);
+
+    const users = await User.find({ _id: { $in: followerIds } }).select(
+      "username avatar followersCount",
+    );
+
+    res.status(200).json(users);
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
 };

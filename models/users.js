@@ -9,8 +9,8 @@ const userSchema = new mongoose.Schema(
     profilePicture: { type: String, default: "" },
     coverPhoto: { type: String, default: "" },
     bookmarkedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
-    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-    following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    followersCount: { type: Number, default:0 },
+    followingCount: { type: Number, default:0 },
     likedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Post" }],
   },
   { timestamps: true }

@@ -1,5 +1,7 @@
 import User from "../models/users.js";
 import jwt from "jsonwebtoken";
+import Follows from "../models/follows.js";
+import mongoose from "mongoose";
 
 export const getUser = async (req, res) => {
   try {
@@ -63,7 +65,7 @@ export const updateUser = async (req, res) => {
   const updatedUser = await User.findByIdAndUpdate(
     req.params.id,
     { $set: updateData },
-    { new: true } // return updated document
+    { new: true }, // return updated document
   );
 
   const encodedToken = jwt.sign(
@@ -77,7 +79,7 @@ export const updateUser = async (req, res) => {
     process.env.JWT_SECRET,
     {
       expiresIn: "10h",
-    }
+    },
   );
 
   res.status(200).json({
@@ -97,7 +99,7 @@ export const searchUsers = async (req, res) => {
 
     const userList = await User.find(
       { username: { $regex: query.trim(), $options: "i" } },
-      "username profilePicture _id"
+      "username profilePicture _id",
     )
       .limit(10)
       .sort({ username: 1 });
@@ -116,12 +118,87 @@ export const deleteUser = (req, res) => {
   res.send("Delete user profile");
 };
 
-export const followUser = (req, res) => {
-  res.send("Follow a user");
+export const followUser = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction(); // START FIRST
+
+    const userId = req.params.id;
+    const currentUserId = req.user.id;
+   //const currentUserId = req.headers["x-user-id"];
+
+    if (userId === currentUserId) {
+      throw new Error("SELF_FOLLOW");
+    }
+
+    const userToFollow = await User.findById(userId).session(session);
+    if (!userToFollow) {
+      throw new Error("USER_NOT_FOUND");
+    }
+
+    const alreadyFollowing = await Follows.findOne({
+      followerId: currentUserId,
+      followingId: userId,
+    }).session(session);
+
+    if (alreadyFollowing) {
+      throw new Error("ALREADY_FOLLOWING");
+    }
+
+    await Follows.create(
+      [
+        {
+          followerId: currentUserId,
+          followingId: userId,
+        },
+      ],
+      { session },
+    );
+
+    await User.updateOne(
+      { _id: currentUserId },
+      { $inc: { followingCount: 1 } },
+      { session },
+    );
+
+    await User.updateOne(
+      { _id: userId },
+      { $inc: { followersCount: 1 } },
+      { session },
+    );
+
+    await session.commitTransaction();
+
+    return res.status(200).json({ message: "User followed successfully" });
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction(); // ✅ only abort if active
+    }
+
+    if (error.message === "SELF_FOLLOW") {
+      return res.status(400).json({ message: "Cannot follow yourself" });
+    }
+
+    if (error.message === "USER_NOT_FOUND") {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (error.message === "ALREADY_FOLLOWING") {
+      return res.status(409).json({ message: "Already following" });
+    }
+
+    console.error("Follow error:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  } finally {
+    session.endSession();
+  }
 };
+
 export const unfollowUser = (req, res) => {
   res.send("Unfollow a user");
 };
+
 export const getFollowers = (req, res) => {
   res.send("Get followers of a user");
 };

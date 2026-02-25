@@ -125,8 +125,8 @@ export const followUser = async (req, res) => {
     session.startTransaction(); // START FIRST
 
     const userId = req.params.id;
-    const currentUserId = req.user.id;
-    //const currentUserId = req.headers["x-user-id"];
+    //const currentUserId = req.user.id;
+    const currentUserId = req.headers["x-user-id"];
 
     if (userId === currentUserId) {
       throw new Error("SELF_FOLLOW");
@@ -210,10 +210,10 @@ export const getFollowing = async (req, res) => {
     const followingIds = follows.map((f) => f.followingId);
 
     const users = await User.find({ _id: { $in: followingIds } }).select(
-      "username avatar followersCount",
+      "username profilePicture followersCount",
     );
-
-    res.status(200).json(users);
+   
+    res.status(200).json({ action: "followingFetched", users });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
@@ -230,10 +230,10 @@ export const getFollowers = async (req, res) => {
     const followerIds = follows.map((f) => f.followerId);
 
     const users = await User.find({ _id: { $in: followerIds } }).select(
-      "username avatar followersCount",
+      "username profilePicture followersCount",
     );
-
-    res.status(200).json(users);
+    console.log("Following users:", users);
+    res.status(200).json({ action: "followersFetched", users });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }

@@ -1,5 +1,40 @@
 import Post from "../models/posts.js";
 import User from "../models/users.js";
+import mongoose from "mongoose";
+// const feedPosts = async (req, res) => {
+//   try {
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const skip = (page - 1) * limit;
+
+//     // Count total posts for pagination info
+//     const totalPosts = await Post.countDocuments();
+
+//     const posts = await Post.find({ parentPost: null })
+//       .sort({ createdAt: -1 })
+//       .skip(skip)
+//       .limit(limit)
+//       .populate("user", "username email profilePicture");
+
+//     const totalPages = Math.ceil(totalPosts / limit);
+//     const hasMore = page < totalPages;
+
+//     res.status(200).json({
+//       action: "feedPosts",
+//       posts,
+//       pagination: {
+//         page,
+//         limit,
+//         totalPosts,
+//         totalPages,
+//         hasMore,
+//       },
+//     });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ message: "Error fetching feed posts" });
+//   }
+// };
 
 const feedPosts = async (req, res) => {
   try {
@@ -7,34 +42,79 @@ const feedPosts = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Count total posts for pagination info
-    const totalPosts = await Post.countDocuments();
-
-    const posts = await Post.find({ parentPost: null })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate("user", "username email profilePicture");
-
+    const totalPosts = await Post.countDocuments({ parentPost: null });
     const totalPages = Math.ceil(totalPosts / limit);
     const hasMore = page < totalPages;
+
+    const posts = await Post.aggregate([
+      { $match: { parentPost: null } },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+
+      // populate user
+      {
+        $lookup: {
+          from: "users",
+          localField: "user",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+
+      // count comments for each post
+      {
+        $lookup: {
+          from: "posts",
+          let: { postId: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$parentPost", "$$postId"] } } },
+            { $count: "count" },
+          ],
+          as: "commentsCount",
+        },
+      },
+      {
+        $addFields: {
+          commentsCount: {
+            $ifNull: [{ $arrayElemAt: ["$commentsCount.count", 0] }, 0],
+          },
+        },
+      },
+
+      // only include needed user fields
+      {
+        $project: {
+          user: {
+            _id: 1,
+            username: 1,
+            email: 1,
+            profilePicture: 1,
+          },
+          text: 1,
+          media: 1,
+          likes: 1,
+          parentPost: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          commentsCount: 1,
+          __v: 1,
+        },
+      },
+    ]);
 
     res.status(200).json({
       action: "feedPosts",
       posts,
-      pagination: {
-        page,
-        limit,
-        totalPosts,
-        totalPages,
-        hasMore,
-      },
+      pagination: { page, limit, totalPosts, totalPages, hasMore },
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Error fetching feed posts" });
   }
 };
+
 
 const createPost = async (req, res) => {
   try {
@@ -119,23 +199,26 @@ const deletePost = (req, res) => {
   res.send("Delete a specific post");
 };
 
+// POST /api/posts/:postId/comments
+// body: { userId, text, parentPostId? }
 const createComment = async (req, res) => {
-  console.log("comment api hit");
-
   const { postId } = req.params;
-  const { userId, text } = req.body;
+  const { userId, text, parentPostId } = req.body;
 
   try {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    const parentPost = await Post.findById(postId);
-    if (!parentPost) return res.status(404).json({ error: "Post not found" });
+    // parentPostId is optional: if present, reply to that comment
+    const parentId = parentPostId || postId;
+
+    const parentPost = await Post.findById(parentId);
+    if (!parentPost) return res.status(404).json({ error: "Parent not found" });
 
     const comment = await Post.create({
       user: user._id,
       text,
-      parentPost: parentPost._id,
+      parentPost: parentId,
       media: req.file ? [`/uploads/${req.file.filename}`] : [],
       likes: [],
     });
@@ -155,23 +238,51 @@ const createComment = async (req, res) => {
   }
 };
 
+
+
+
 const fetchComments = async (req, res) => {
   try {
     const { postId } = req.params;
 
-    const comments = await Post.find({ parentPost: postId })
-      .sort({ createdAt: -1 }) // newest first
-      .populate("user", "username email profilePicture");
+    const data = await Post.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(postId) } },
+      {
+        $graphLookup: {
+          from: "posts",
+          startWith: "$_id",
+          connectFromField: "_id",
+          connectToField: "parentPost",
+          as: "comments",
+          depthField: "depth",
+        },
+      },
+      { $project: { comments: 1 } },
+      { $unwind: "$comments" },
+      {
+        $lookup: {
+          from: "users",
+          localField: "comments.user",
+          foreignField: "_id",
+          as: "comments.user",
+        },
+      },
+      { $unwind: "$comments.user" },
+      {
+        $group: {
+          _id: null,
+          comments: { $push: "$comments" },
+        },
+      },
+    ]);
 
-      console.log(comments);
-    res.status(201).json({
-      action: "allPostComments",
-      comments: comments,
-    });
+    const comments = data[0]?.comments || [];
+    res.status(200).json({ action: "allPostComments", comments });
   } catch (error) {
     res.status(500).json(error.message);
   }
 };
+
 
 export {
   feedPosts,

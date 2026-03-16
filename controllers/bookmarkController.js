@@ -1,54 +1,48 @@
-import User from "../models/users.js";
 import Post from "../models/posts.js";
+import User from "../models/users.js";
+import AppError from "../utils/AppError.js";
+import asyncHandler from "../utils/asyncHandler.js";
 
-const bookmarkPost = async (req, res) => {
-  console.log(req.body);
-
-  try {
-    const user = await User.findById(req.params.id);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    const post = await Post.findById(req.body.postId);
-    if (!post) return res.status(404).json({ error: "Post not found" });
-
-    // Check if the post is already bookmarked
-    if (user.bookmarkedPosts.includes(post._id)) {
-      // If yes, remove the bookmark
-      user.bookmarkedPosts.pull(post._id);
-    } else {
-      // If no, add the bookmark
-      user.bookmarkedPosts.push(post._id);
-    }
-
-    await user.save();
-    await post.populate("user", "username email profilePicture");
-    res.status(200).json({
-      action: "postBookmarked",
-      postId: post._id,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to bookmark post" });
+export const bookmarkPost = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    throw new AppError("User not found", 404);
   }
-};
 
-const getUserBookmarks = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id).populate({
-      path: "bookmarkedPosts", // populate posts
-      populate: {
-        path: "user", // inside Post, populate user
-        select: "username profilePicture email", // only send needed fields
-      },
-    });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    res.status(200).json({
-      action: "userBookmarks",
-      bookmarkedPosts: user.bookmarkedPosts, // send actual posts
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch bookmarks" });
+  const post = await Post.findById(req.body.postId);
+  if (!post) {
+    throw new AppError("Post not found", 404);
   }
-};
 
-export { bookmarkPost, getUserBookmarks };
+  if (user.bookmarkedPosts.includes(post._id)) {
+    user.bookmarkedPosts.pull(post._id);
+  } else {
+    user.bookmarkedPosts.push(post._id);
+  }
+
+  await user.save();
+
+  res.status(200).json({
+    action: "postBookmarked",
+    postId: post._id,
+  });
+});
+
+export const getUserBookmarks = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id).populate({
+    path: "bookmarkedPosts",
+    populate: {
+      path: "user",
+      select: "username profilePicture email",
+    },
+  });
+
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  res.status(200).json({
+    action: "userBookmarks",
+    bookmarkedPosts: user.bookmarkedPosts,
+  });
+});

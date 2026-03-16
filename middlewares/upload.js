@@ -1,21 +1,35 @@
+import fs from "fs";
 import multer from "multer";
 import path from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
-import { log } from "console";
+import { env } from "../config/env.js";
 
-// __filename and __dirname in ES modules
-const __filename = fileURLToPath(import.meta.url);
-console.log(__filename);
+const uploadDirectory = path.join(process.cwd(), env.uploadDir);
 
-const __dirname = dirname(__filename);
-log(__dirname);
+fs.mkdirSync(uploadDirectory, { recursive: true });
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, "../uploads")),
-  filename: (req, file, cb) =>
-    cb(null, Date.now() + path.extname(file.originalname)),
+  destination: (_req, _file, cb) => cb(null, uploadDirectory),
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname);
+    cb(null, `${Date.now()}${extension}`);
+  },
 });
 
-const upload = multer({ storage });
+const fileFilter = (_req, file, cb) => {
+  if (!file.mimetype.startsWith("image/")) {
+    cb(new Error("Only image uploads are supported"));
+    return;
+  }
+
+  cb(null, true);
+};
+
+const upload = multer({
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: env.maxFileSizeMb * 1024 * 1024,
+  },
+});
 
 export default upload;

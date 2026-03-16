@@ -1,104 +1,93 @@
 import Conversation from "../models/conversation.js";
-import message from "../models/message.js";
 import Message from "../models/message.js";
-import mongoose from "mongoose";
+import AppError from "../utils/AppError.js";
+import asyncHandler from "../utils/asyncHandler.js";
 
-// Ensure two participants array is stored sorted for deterministic uniqueness
 const normalizeParticipants = (a, b) => [String(a), String(b)].sort();
 
-export const upsertDmConversation = async (req, res) => {
-  try {
-    const { userIdA, userIdB } = req.body;
-    if (!userIdA || !userIdB) {
-      return res
-        .status(400)
-        .json({ message: "userIdA and userIdB are required" });
-    }
-    const participants = normalizeParticipants(userIdA, userIdB);
-
-    let convo = await Conversation.findOne({
-      participants: { $all: participants, $size: 2 },
-    });
-    if (!convo) {
-      convo = await Conversation.create({ participants });
-    }
-    return res.json(convo);
-  } catch (err) {
-    return res.status(500).json({ message: err.message });
+export const upsertDmConversation = asyncHandler(async (req, res) => {
+  const { userIdA, userIdB } = req.body;
+  if (!userIdA || !userIdB) {
+    throw new AppError("userIdA and userIdB are required", 400);
   }
-};
 
-export const getConversationMessages = async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-    const { limit = 50, before } = req.query;
+  const participants = normalizeParticipants(userIdA, userIdB);
+  let conversation = await Conversation.findOne({
+    participants: { $all: participants, $size: 2 },
+  });
 
-    const query = { conversation: conversationId };
-    if (before) {
-      query.createdAt = { $lt: new Date(before) };
-    }
-
-    const messages = await Message.find(query)
-      .sort({ createdAt: -1 })
-      .limit(Number(limit));
-    return res.json(messages.reverse());
-  } catch (err) {
-    return res.status(500).json({ message: err.message });
+  if (!conversation) {
+    conversation = await Conversation.create({ participants });
   }
-};
 
-export const sendMessage = async (req, res) => {
-  try {
-    const { conversationId, senderId, text } = req.body;
-    if (!conversationId || !senderId || !text) {
-      return res
-        .status(400)
-        .json({ message: "conversationId, senderId, text are required" });
-    }
-    const message = await Message.create({
-      conversation: conversationId,
-      sender: senderId,
-      text,
-    });
-    await Conversation.findByIdAndUpdate(conversationId, {
-      lastMessage: text,
-      updatedAt: new Date(),
-    });
-    return res.status(201).json(message);
-  } catch (err) {
-    return res.status(500).json({ message: err.message });
+  res.status(200).json(conversation);
+});
+
+export const getConversationMessages = asyncHandler(async (req, res) => {
+  const { conversationId } = req.params;
+  const { limit = 50, before } = req.query;
+
+  const query = { conversation: conversationId };
+  if (before) {
+    query.createdAt = { $lt: new Date(before) };
   }
-};
 
-export const getMessagedUsers = async (req, res) => {
-  console.log(req.query);
+  const messages = await Message.find(query)
+    .sort({ createdAt: -1 })
+    .limit(Number(limit));
+
+  res.status(200).json(messages.reverse());
+});
+
+export const sendMessage = asyncHandler(async (req, res) => {
+  const { conversationId, senderId, text } = req.body;
+  if (!conversationId || !senderId || !text) {
+    throw new AppError("conversationId, senderId, text are required", 400);
+  }
+
+  const message = await Message.create({
+    conversation: conversationId,
+    sender: senderId,
+    text,
+  });
+
+  await Conversation.findByIdAndUpdate(conversationId, {
+    lastMessage: text,
+    updatedAt: new Date(),
+  });
+
+  res.status(201).json(message);
+});
+
+export const getMessagedUsers = asyncHandler(async (req, res) => {
   const currentUserId = req.query.userId;
-
   if (!currentUserId) {
-    return res.status(400).json({ message: "user id is required" });
+    throw new AppError("user id is required", 400);
   }
 
-  const conversationUsers = await Conversation.find({
+  const conversations = await Conversation.find({
     participants: currentUserId,
-    $expr: { $eq: [{ $size: "$participants" }, 2] }, // only 2 participants (DMs)
+    $expr: { $eq: [{ $size: "$participants" }, 2] },
   })
     .populate("participants", "username profilePicture")
     .select("participants lastMessage");
 
- 
+  const usersWithLastMessage = conversations
+    .map((conversation) => {
+      const otherUser = conversation.participants.find(
+        (participant) => participant._id.toString() !== currentUserId.toString(),
+      );
 
-  const usersWithLastMessage = conversationUsers.map((conv) => {
-    const otherUser = conv.participants.find(
-      (u) => u._id.toString() !== currentUserId.toString()
-    );
+      if (!otherUser) {
+        return null;
+      }
 
-    return {
-      ...otherUser.toObject(), // convert mongoose doc to plain object
-      lastMessage: conv.lastMessage, // add lastMessage
-    };
-  });
+      return {
+        ...otherUser.toObject(),
+        lastMessage: conversation.lastMessage,
+      };
+    })
+    .filter(Boolean);
 
-
-
-  return res.status(200).json({ users: usersWithLastMessage });
-};
+  res.status(200).json({ users: usersWithLastMessage });
+});

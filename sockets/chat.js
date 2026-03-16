@@ -1,20 +1,12 @@
 import { Server } from "socket.io";
 import Conversation from "../models/conversation.js";
 import Message from "../models/message.js";
-import mongoose from "mongoose";
+import { env } from "../config/env.js";
 
-/**
- * Initialize Socket.IO and register chat events.
- * - joinRoom: client joins a specific room (e.g., conversationId or user pair room)
- * - sendMessage: broadcast message to room
- */
-export function initChatSockets(
-  httpServer,
-  { corsOrigin = ["http://localhost:3000", "http://localhost:3002"] } = {}
-) {
+export function initChatSockets(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin: corsOrigin,
+      origin: env.allowedOrigins,
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -32,7 +24,6 @@ export function initChatSockets(
       socket.emit("joinedRoom", { roomId });
     });
 
-    // Join a DM between two users
     socket.on("joinDm", ({ selfUserId, otherUserId }) => {
       if (!selfUserId || !otherUserId) return;
       const roomId = makeDmRoomId(selfUserId, otherUserId);
@@ -40,63 +31,55 @@ export function initChatSockets(
       socket.emit("joinedRoom", { roomId });
     });
 
-    // Send a DM (room inferred by user ids)
     socket.on("sendDm", async ({ selfUserId, otherUserId, message }) => {
       try {
         if (!selfUserId || !otherUserId || !message?.text) return;
 
-        const [a, b] = [String(selfUserId), String(otherUserId)].sort();
+        const participants = [String(selfUserId), String(otherUserId)].sort();
 
-        // Upsert conversation for the two participants
-        let convo = await Conversation.findOne({
-          participants: { $all: [a, b], $size: 2 },
+        let conversation = await Conversation.findOne({
+          participants: { $all: participants, $size: 2 },
         });
-        if (!convo) {
-          convo = await Conversation.create({ participants: [a, b] });
+
+        if (!conversation) {
+          conversation = await Conversation.create({ participants });
         }
 
-        // Save message in DB
-        const saved = await Message.create({
-          conversation: convo._id,
+        const savedMessage = await Message.create({
+          conversation: conversation._id,
           sender: selfUserId,
           text: message.text,
         });
 
-        // Update lastMessage
-        await Conversation.findByIdAndUpdate(convo._id, {
+        await Conversation.findByIdAndUpdate(conversation._id, {
           lastMessage: message.text,
           updatedAt: new Date(),
         });
 
-        // Compute dynamic DM roomId
         const roomId = makeDmRoomId(selfUserId, otherUserId);
-
-        // Broadcast to room
         const payload = {
-          _id: saved._id,
+          _id: savedMessage._id,
           roomId,
-          conversationId: String(convo._id),
-          senderId: String(saved.sender),
-          text: saved.text,
-          createdAt: saved.createdAt,
+          conversationId: String(conversation._id),
+          senderId: String(savedMessage.sender),
+          text: savedMessage.text,
+          createdAt: savedMessage.createdAt,
         };
+
         socket.to(roomId).emit("newMessage", payload);
         socket.emit("newMessage", payload);
-      } catch (_) {
-        // Optional: emit error event
+      } catch (error) {
+        console.error("Socket sendDm error", error);
+        socket.emit("socketError", { message: "Failed to send message" });
       }
     });
 
-    // Typing indicators
     socket.on("typing", ({ roomId, userId, isTyping }) => {
       if (!roomId || !userId) return;
+
       socket
         .to(roomId)
         .emit("typing", { roomId, userId, isTyping: Boolean(isTyping) });
-    });
-
-    socket.on("disconnect", () => {
-      // Cleanup or logging can be handled here
     });
   });
 

@@ -1,25 +1,23 @@
-import User from "../models/users.js";
 import jwt from "jsonwebtoken";
-import Follows from "../models/follows.js";
 import mongoose from "mongoose";
+import Follows from "../models/follows.js";
+import User from "../models/users.js";
+import { env } from "../config/env.js";
+import { buildPublicFileUrl } from "../services/storageService.js";
+import AppError from "../utils/AppError.js";
+import asyncHandler from "../utils/asyncHandler.js";
 
-export const getUser = async (req, res) => {
-  try {
-    const userID = req.params.id;
+export const getUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id).select("-password -__v").lean();
 
-    // Find user and exclude sensitive fields
-    const user = await User.findById(userID).select("-password -__v").lean();
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
 
-    if (!user) {
-      return res.status(404).json({
-        action: "setUser",
-        status: "error",
-        message: "User not found",
-      });
-    }
-
-    // Create safe user object with only necessary fields
-    const safeUser = {
+  res.status(200).json({
+    action: "setUser",
+    status: "success",
+    user: {
       _id: user._id,
       username: user.username,
       email: user.email,
@@ -28,44 +26,27 @@ export const getUser = async (req, res) => {
       followers: user.followers,
       following: user.following,
       bookmarkedPosts: user.bookmarkedPosts,
-    };
+    },
+  });
+});
 
-    res.status(200).json({
-      action: "setUser",
-      status: "success",
-      user: safeUser,
-    });
-  } catch (error) {
-    console.error("Error in getUser:", error);
-    res.status(500).json({
-      action: "getUser",
-      status: "error",
-      message: "Failed to fetch user",
-    });
-  }
-};
-
-export const updateUser = async (req, res) => {
-  const userID = req.params.id;
-  const user = await User.findById(userID);
+export const updateUser = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
   if (!user) {
-    return res.status(404).json({ message: "User not found" });
+    throw new AppError("User not found", 404);
   }
 
   const updateData = {};
   if (req.body.username) updateData.username = req.body.username;
   if (req.body.bio) updateData.bio = req.body.bio;
   if (req.file) {
-    updateData.profilePicture = `${req.protocol}://${req.get("host")}/uploads/${
-      req.file.filename
-    }`;
+    updateData.profilePicture = buildPublicFileUrl(req, req.file.filename);
   }
 
-  // Update user in DB
   const updatedUser = await User.findByIdAndUpdate(
     req.params.id,
     { $set: updateData },
-    { new: true }, // return updated document
+    { new: true },
   );
 
   const encodedToken = jwt.sign(
@@ -76,65 +57,60 @@ export const updateUser = async (req, res) => {
       profilePicture: updatedUser.profilePicture,
       bio: updatedUser.bio,
     },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "10h",
-    },
+    env.jwtSecret,
+    { expiresIn: "10h" },
   );
 
   res.status(200).json({
     action: "userUpdated",
     user: updatedUser,
-    encodedToken: encodedToken,
+    encodedToken,
   });
-};
+});
 
-export const searchUsers = async (req, res) => {
-  try {
-    const { query } = req.query;
-
-    if (!query || query.trim() === "") {
-      return res.status(400).json({ message: "Query cannot be empty" });
-    }
-
-    const userList = await User.find(
-      { username: { $regex: query.trim(), $options: "i" } },
-      "username profilePicture _id",
-    )
-      .limit(10)
-      .sort({ username: 1 });
-
-    return res.status(200).json({
-      action: "searchedUsers",
-      userList,
-    });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Server error" });
+export const searchUsers = asyncHandler(async (req, res) => {
+  const { query } = req.query;
+  if (!query || query.trim() === "") {
+    throw new AppError("Query cannot be empty", 400);
   }
+
+  const userList = await User.find(
+    { username: { $regex: query.trim(), $options: "i" } },
+    "username profilePicture _id",
+  )
+    .limit(10)
+    .sort({ username: 1 });
+
+  res.status(200).json({
+    action: "searchedUsers",
+    userList,
+  });
+});
+
+export const deleteUser = (_req, res) => {
+  res.status(501).json({ message: "Delete user profile is not implemented yet" });
 };
 
-export const deleteUser = (req, res) => {
-  res.send("Delete user profile");
-};
-
-export const followUser = async (req, res) => {
+export const followUser = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
-    session.startTransaction(); // START FIRST
+    session.startTransaction();
 
     const userId = req.params.id;
-    //const currentUserId = req.user.id;
     const currentUserId = req.headers["x-user-id"];
 
+    if (!currentUserId) {
+      throw new AppError("x-user-id header is required", 400);
+    }
+
     if (userId === currentUserId) {
-      throw new Error("SELF_FOLLOW");
+      throw new AppError("Cannot follow yourself", 400);
     }
 
     const userToFollow = await User.findById(userId).session(session);
     if (!userToFollow) {
-      throw new Error("USER_NOT_FOUND");
+      throw new AppError("User not found", 404);
     }
 
     const alreadyFollowing = await Follows.findOne({
@@ -143,7 +119,7 @@ export const followUser = async (req, res) => {
     }).session(session);
 
     if (alreadyFollowing) {
-      throw new Error("ALREADY_FOLLOWING");
+      throw new AppError("Already following", 409);
     }
 
     await Follows.create(
@@ -170,71 +146,44 @@ export const followUser = async (req, res) => {
 
     await session.commitTransaction();
 
-    return res.status(200).json({ message: "User followed successfully" });
+    res.status(200).json({ message: "User followed successfully" });
   } catch (error) {
     if (session.inTransaction()) {
-      await session.abortTransaction(); // ✅ only abort if active
+      await session.abortTransaction();
     }
 
-    if (error.message === "SELF_FOLLOW") {
-      return res.status(400).json({ message: "Cannot follow yourself" });
-    }
-
-    if (error.message === "USER_NOT_FOUND") {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (error.message === "ALREADY_FOLLOWING") {
-      return res.status(409).json({ message: "Already following" });
-    }
-
-    console.error("Follow error:", error);
-    return res.status(500).json({ message: "Internal server error" });
+    throw error;
   } finally {
     session.endSession();
   }
+});
+
+export const unfollowUser = (_req, res) => {
+  res.status(501).json({ message: "Unfollow a user is not implemented yet" });
 };
 
-export const unfollowUser = (req, res) => {
-  res.send("Unfollow a user");
-};
+export const getFollowing = asyncHandler(async (req, res) => {
+  const follows = await Follows.find({ followerId: req.params.id })
+    .select("followingId")
+    .limit(20);
 
-export const getFollowing = async (req, res) => {
-  try {
-    const userId = req.params.id;
+  const followingIds = follows.map((follow) => follow.followingId);
+  const users = await User.find({ _id: { $in: followingIds } }).select(
+    "username profilePicture followersCount",
+  );
 
-    const follows = await Follows.find({ followerId: userId })
-      .select("followingId")
-      .limit(20);
+  res.status(200).json({ action: "followingFetched", users });
+});
 
-    const followingIds = follows.map((f) => f.followingId);
+export const getFollowers = asyncHandler(async (req, res) => {
+  const follows = await Follows.find({ followingId: req.params.id })
+    .select("followerId")
+    .limit(20);
 
-    const users = await User.find({ _id: { $in: followingIds } }).select(
-      "username profilePicture followersCount",
-    );
-   
-    res.status(200).json({ action: "followingFetched", users });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
+  const followerIds = follows.map((follow) => follow.followerId);
+  const users = await User.find({ _id: { $in: followerIds } }).select(
+    "username profilePicture followersCount",
+  );
 
-export const getFollowers = async (req, res) => {
-  try {
-    const userId = req.params.id;
-
-    const follows = await Follows.find({ followingId: userId })
-      .select("followerId")
-      .limit(20);
-
-    const followerIds = follows.map((f) => f.followerId);
-
-    const users = await User.find({ _id: { $in: followerIds } }).select(
-      "username profilePicture followersCount",
-    );
-    console.log("Following users:", users);
-    res.status(200).json({ action: "followersFetched", users });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
+  res.status(200).json({ action: "followersFetched", users });
+});

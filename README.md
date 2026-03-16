@@ -1,10 +1,100 @@
-# Chat App Backend
+# Conversio Backend
 
-This backend is structured to run locally and deploy cleanly on Railway.
+Conversio Backend is the server-side API for a social chat application. It handles user authentication, profile management, post creation, comments, bookmarks, direct messaging, and real-time chat events using Socket.IO.
 
-## Environment variables
+This project is built with Node.js, Express, MongoDB, and Mongoose, and is structured to run locally or deploy on Railway.
 
-Copy `.env.example` to `.env` for local development and configure the same variables in Railway:
+## Features
+
+- User registration and login with JWT-based authentication
+- User profile fetch and update
+- Follow and follower endpoints
+- Feed posts with pagination
+- Create posts with optional image upload
+- Like posts
+- Create nested comments and fetch post comment threads
+- Bookmark posts and fetch saved posts
+- Direct message conversations
+- Message history APIs
+- Real-time chat rooms and typing indicators with Socket.IO
+
+## Tech Stack
+
+- Node.js
+- Express
+- MongoDB
+- Mongoose
+- Socket.IO
+- Multer
+- JWT
+- Railway-ready deployment config
+
+## Project Structure
+
+```text
+config/         Environment, database, and CORS configuration
+controllers/    Route handlers for auth, users, posts, chat, and bookmarks
+middlewares/    Upload handling and global error middleware
+models/         Mongoose models
+routes/         API route definitions
+services/       Shared service logic such as file URL generation
+sockets/        Socket.IO setup
+utils/          Shared utilities like async handler and custom errors
+app.js          Express app configuration
+server.js       Server bootstrap entrypoint
+```
+
+## API Modules
+
+### Auth
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+
+### Users
+
+- `GET /api/users/:id`
+- `GET /api/users?query=...`
+- `PATCH /api/users/:id`
+- `POST /api/users/:id/follow`
+- `POST /api/users/:id/unfollow`
+- `GET /api/users/:id/following`
+- `GET /api/users/:id/followers`
+
+### Posts
+
+- `GET /api/posts`
+- `POST /api/posts`
+- `GET /api/posts/:id`
+- `POST /api/posts/:id/like`
+- `POST /api/posts/:postId/comments`
+- `GET /api/posts/:postId/comments`
+
+### Bookmarks
+
+- `POST /api/bookmark/:id`
+- `GET /api/bookmark/:id`
+
+### Chat
+
+- `POST /api/chat/dm`
+- `GET /api/chat/:conversationId/messages`
+- `GET /api/chat/conversation`
+- `POST /api/chat/message`
+
+## Real-Time Events
+
+Socket.IO is used for direct messaging and room-based communication.
+
+- `joinRoom`
+- `joinDm`
+- `sendDm`
+- `typing`
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and configure the following values:
 
 - `PORT`
 - `MONGO_URI`
@@ -17,23 +107,27 @@ Copy `.env.example` to `.env` for local development and configure the same varia
 - `UPLOAD_BASE_URL`
 - `MAX_FILE_SIZE_MB`
 
-## Local development
+## Run Locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Railway deployment
+The app exposes a health endpoint at `GET /health`.
 
-1. Push this repository to GitHub.
-2. Create a new Railway project from the repo.
-3. Add the environment variables from `.env.example` in Railway.
-4. Add a MongoDB connection string in `MONGO_URI`.
-5. Deploy. Railway will run `npm start`.
+## Deployment
 
-## Important upload note
+This backend is prepared for Railway deployment.
 
-The app still uses local disk uploads by default. That works on Railway, but Railway storage is ephemeral, which means uploaded files can disappear after redeploys or restarts.
+1. Push the repository to GitHub.
+2. Create a Railway project from the repo.
+3. Add the environment variables from `.env.example`.
+4. Set `MONGO_URI` to your MongoDB connection string.
+5. Deploy the service.
 
-For production, the recommended next step is moving uploads to object storage like Cloudinary, S3, or Supabase Storage and storing the returned public URLs in MongoDB.
+## Upload Storage Note
+
+The app currently stores uploaded files on the local filesystem. That is fine for local development, but Railway uses ephemeral storage, so uploaded files can be lost after redeploys or restarts.
+
+For production, the next recommended improvement is moving uploads to a cloud storage provider such as Cloudinary, Amazon S3, or Supabase Storage.
